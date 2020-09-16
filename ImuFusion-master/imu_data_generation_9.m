@@ -67,8 +67,6 @@ for i = time
     quatsaveTrue(k,:) = oula2quat(oula);
 end
 
-
-
 %% ¼ÓÔëÉù
 add_nosie = 1;
 if add_nosie == 1

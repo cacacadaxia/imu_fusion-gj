@@ -10,7 +10,7 @@
 %   作者：s.m.
 %--------------------------------------------------------------------------
 %  功能： 1.生成一组数据 [m/s^2] 与 [rad/s]
-%        2.加噪声之后
+%        2.加噪声之后：怎么一下子就飘逸了
 %--------------------------------------------------------------------------
 
 
@@ -68,10 +68,10 @@ end
 
 
 if PLOT
-    figure;plot(time , PwbSav-pos(:,1:3));title('中值积分的误差对比')
+    figure;plot(time , PwbSav);title('中值积分的误差对比')
 %     figure;plot(time, real(oula_new));hold on;
 %     plot(time , pos(:,4:6))
-%     figure;plot(pos(:,4:6)-real(oula_new))
+    figure;plot(pos(:,4:6)-real(oula_new))
 end
 %% fuction else
 function Ang3 = qtpoula(q)

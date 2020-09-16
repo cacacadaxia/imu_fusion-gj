@@ -19,6 +19,9 @@
 %    bias: [ 0.000023404834136742844, 0.000023596771567764949, 0.000014970418056326829 ]
 %       3. EKF
 %       4. 增加位置的观测量
+% add at 0915
+%       5. 讨论位置的积分问题，对比不同的积分
+%       6. 
 %--------------------------------------------------------------------------
 
 
@@ -28,8 +31,8 @@ end_t = 80;
 [imu_data ,  pos , vel , time , dt] = data_gener(end_t);
 PLOT = 1;
 if PLOT
-    figure;plot(pos(:,1:3));title('位置')
-    figure;plot(pos(:,4:6)/pi*180);title('角度')
+%     figure;plot(pos(:,1:3));title('位置')
+%     figure;plot(pos(:,4:6)/pi*180);title('角度')
 end
 
 %% 加噪声
@@ -62,7 +65,7 @@ for i = 1:length(imu_data)
     imu_data(4:6,i) = walkbias_gyro + imu_data(4:6,i);
 end
 
-%% 中值积分
+%% 中值积分 (第一种积分方法)（常规）
 gw        = [0, 0, 9.81]';
 init_ang  = pos(1,4:6);  %%初始欧拉角
 init_quat = angle2quat(init_ang(3),init_ang(2),init_ang(1));%%初始四元数
@@ -95,6 +98,114 @@ for k = 2:N
     oula_new(k,:) = qtpoula(quat)';
     PwbSav(k,:) = Pwb';
 end
+figure;plot(PwbSav - pos(:,1:3))
+
+PwbSav1 = PwbSav;
+
+
+%% 中值积分 (第二种积分方法)
+gw        = [0, 0, 9.81]';
+init_ang  = pos(1,4:6);  %%初始欧拉角
+init_quat = angle2quat(init_ang(3),init_ang(2),init_ang(1));%%初始四元数
+quat      = init_quat';     %%初始角度赋值
+N         = length(imu_data);
+Vw        = vel(1,1:3)';
+Pwb       = pos(1,1:3)';
+for k = 2:N
+    w = (imu_data(4:6, k-1)    +    imu_data(4:6, k))/2;
+    a =  imu_data(1:3, k-1);
+    a1 = imu_data(1:3, k);
+    Ow = [0     -w(1)   -w(2)    -w(3);...
+          w(1)   0       w(3)    -w(2);...
+          w(2)  -w(3)    0        w(1);...
+          w(3)   w(2)   -w(1)     0  ];
+    Fc = 0.5*Ow;
+    F = eye(4) + Fc*dt;%%或者在这里改变积分的方法(对于矩阵的积分方法)
+    quat1 = F* quat;
+  
+    %%
+%     R_b_w = quat2dcm(quat');
+%     R_b_w_1 = quat2dcm(quat1');
+%     acc_w = (R_b_w' * a + gw   +   R_b_w_1' * a1 + gw)/2;
+% 
+%     quat = F* quat;
+%     Pwb = Pwb + Vw * dt + 0.5 * dt * dt * acc_w;
+%     Vw = Vw + acc_w * dt;
+    
+    %%
+    quat = F* quat;
+    R_b_w = quat2dcm(quat');
+    B_a = a + R_b_w*gw;     %%去除g之后的在b系下的加速度
+    W_a = R_b_w'*B_a;
+    tmp = W_a*dt*dt;    %%二阶差分
+    
+    
+    % 下面是积分环节
+    % 这个应该就是二阶差分的意思吧，实际上和之前也没什么区别
+    Vw = Vw + W_a*dt;
+    Pwb = Pwb + Vw*dt;
+    
+%% data save 
+    quatAll(k,:) = quat';
+    oula_new(k,:) = qtpoula(quat)';
+    PwbSav(k,:) = Pwb';
+end
+figure;plot(PwbSav - pos(:,1:3))
+hold on;
+plot(PwbSav1- pos(:,1:3))
+
+
+%% 中值积分 (第三种积分方法)
+gw        = [0, 0, 9.81]';
+init_ang  = pos(1,4:6);  %%初始欧拉角
+init_quat = angle2quat(init_ang(3),init_ang(2),init_ang(1));%%初始四元数
+quat      = init_quat';     %%初始角度赋值
+N         = length(imu_data);
+Vw        = vel(1,1:3)';
+Pwb       = pos(1,1:3)';
+for k = 2:N
+    w = (imu_data(4:6, k-1)    +    imu_data(4:6, k))/2;
+    a =  imu_data(1:3, k-1);
+    a1 = imu_data(1:3, k);
+    Ow = [0     -w(1)   -w(2)    -w(3);...
+          w(1)   0       w(3)    -w(2);...
+          w(2)  -w(3)    0        w(1);...
+          w(3)   w(2)   -w(1)     0  ];
+    Fc = 0.5*Ow;
+    F = eye(4) + Fc*dt;%%或者在这里改变积分的方法(对于矩阵的积分方法)
+    quat1 = F* quat;
+  
+    %%
+%     R_b_w = quat2dcm(quat');
+%     R_b_w_1 = quat2dcm(quat1');
+%     acc_w = (R_b_w' * a + gw   +   R_b_w_1' * a1 + gw)/2;
+% 
+%     quat = F* quat;
+%     Pwb = Pwb + Vw * dt + 0.5 * dt * dt * acc_w;
+%     Vw = Vw + acc_w * dt;
+    
+    %%
+    quat = F* quat;
+    R_b_w = quat2dcm(quat');
+    B_a = a + R_b_w*gw;     %%去除g之后的在b系下的加速度
+    W_a = R_b_w'*B_a;
+    tmp = W_a*dt*dt;    %%二阶差分
+    %% 这个积分方法始终不对
+    
+    % 下面是积分环节
+    % 这个应该就是二阶差分的意思吧，实际上和之前也没什么区别
+    Vw = Vw + tmp;
+    Pwb = Pwb + Vw;
+    
+    
+%% data save 
+    quatAll(k,:) = quat';
+    oula_new(k,:) = qtpoula(quat)';
+    PwbSav(k,:) = Pwb';
+end
+figure;plot(PwbSav - pos(:,1:3))
+
+
 
 %%
 
@@ -189,19 +300,20 @@ for k = 2:N
     x_oula(:,k) = qtpoula(quat);
 end
 %%position
-figure;plot3(x_r(1,:),x_r(2,:),x_r(3,:));
-hold on;plot3(pos(:,1),pos(:,2),pos(:,3));
+% figure;plot3(x_r(1,:),x_r(2,:),x_r(3,:));
+% hold on;plot3(pos(:,1),pos(:,2),pos(:,3));
 %%err
-figure;plot(pos(:,1:3)- x_r(1:3,:)');
+figure;plot(pos(:,1:3) -  x_r(1:3,:)');
+figure;plot(pos(:,4:6) -  x_oula');title('EKF角度误差对比')
 % hold on;plot(PwbSav-pos(:,1:3));
 
-
+PLOT = 0;
 if PLOT
-    figure;plot(time , PwbSav-pos(:,1:3));title('中值积分的误差对比')
+    figure;plot(time , PwbSav - pos(:,1:3));title('中值积分的位置误差对比');
 %     figure;plot(time, real(oula_new));hold on;
-%     plot(time , pos(:,4:6))
-%     figure;plot(pos(:,4:6)-real(oula_new))
+    figure;plot(pos(:,4:6) - real(oula_new));title('中值积分的角度误差对比');
 end
+
 %% fuction else
 function Ang3 = qtpoula(q)
 %四元数转欧拉角

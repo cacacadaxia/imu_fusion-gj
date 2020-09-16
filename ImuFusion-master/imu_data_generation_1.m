@@ -10,6 +10,8 @@
 %   作者：s.m.
 %--------------------------------------------------------------------------
 %  功能： 1.生成一组数据 [m/s^2] 与 [rad/s]  ，并且用欧拉积分与中值积分
+% 0915
+%         2. 三种积分的误差对比
 %--------------------------------------------------------------------------
 
 
@@ -49,32 +51,82 @@ for t = 0:dt:20
     imu_data(1:6,k) = [imu_acc;imu_gyro];
 end
 
-figure;plot(pos(:,1:3));title('位置')
-figure;plot(pos(:,4:6));title('角度')
+% figure;plot(pos(:,1:3));title('位置')
+% figure;plot(pos(:,4:6));title('角度')
+%%
+%% 加噪声
+add_nosie = 1;
+if add_nosie == 1
+     sigma_acc  = 0.0016;           % accelerometer noise (m/s^2)
+    sigma_acc_randwalk = 0.0001;
+    sigma_gyro = 0.01*pi/180;    % gyroscope noise (rad/s)
+    sigma_gyro_randwalk = 0.0002;
+    sigma_vel = 0.01;
+    sigma_pos = 0.001;
+else
+    sigma_acc  = 0.0;           % accelerometer noise (m/s^2)
+    sigma_acc_randwalk = 0.000;
+    sigma_gyro = 0.0*pi/180;    % gyroscope noise (rad/s)
+    sigma_gyro_randwalk = 0.0000;
+    sigma_vel = 0.0;
+    sigma_pos = 0.00;
+end
+%%complex add noise :randn(2,4).*[100;100000]
+imu_data(1:3,:) = imu_data(1:3,:) + randn(size(imu_data(1:3,:)))*sigma_acc;
+imu_data(4:6,:) = imu_data(4:6,:) + randn(size(imu_data(4:6,:)))*sigma_gyro;
 
+walkbias_acc = 0;
+walkbias_gyro = 0;
+for i = 1:length(imu_data)
+    walkbias_acc = walkbias_acc + sigma_acc_randwalk * randn(3,1);
+    imu_data(1:3,i) = walkbias_acc + imu_data(1:3,i);
+    walkbias_gyro = walkbias_gyro + sigma_gyro_randwalk * randn(3,1);
+    imu_data(4:6,i) = walkbias_gyro + imu_data(4:6,i);
+end
 
 %% way1 
-    gyroX = imu_data(4,:);
-    gyroY = imu_data(5,:);
-    gyroZ = imu_data(6,:);
-    gyro =  [gyroX ; gyroY ; gyroZ];
-    gyro = gyro';
-    angle = pos(1,4:6);
-    for t = 2:length(gyroX)
-        angle(t,:) = angle(t-1,:)+ dt*gyro(t,:);
-        for ind = 1:3
-            if angle(t,ind)>pi
-                angle(t,ind) = angle(t,ind)-2*pi;
-            elseif angle(t,ind)<-pi
-                angle(t,ind) = angle(t,ind)+2*pi;
-            end
-        end
-    end
-    
+gyroX = imu_data(4,:);
+gyroY = imu_data(5,:);
+gyroZ = imu_data(6,:);
+gyro =  [gyroX ; gyroY ; gyroZ];
+gyro = gyro';
+angle = pos(1,4:6);
+for t = 2:length(gyroX)
+    angle(t,:) = angle(t-1,:)+ dt*gyro(t,:);
+%         for ind = 1:3
+%             if angle(t,ind)>pi
+%                 angle(t,ind) = angle(t,ind)-2*pi;
+%             elseif angle(t,ind)<-pi
+%                 angle(t,ind) = angle(t,ind)+2*pi;
+%             end
+%         end
+end
+
 figure;plot(angle-pos(:,4:6));
 legend 1 2
 
     
+%% 角度积分修正
+%% 为什么这里出了问题？
+gyroX = imu_data(4,:);
+gyroY = imu_data(5,:);
+gyroZ = imu_data(6,:);
+gyro =  [gyroX ; gyroY ; gyroZ];
+gyro = gyro';
+angle = pos(1,4:6);
+for t = 2:length(gyroX)
+    ang_k = angle(t-1,:);
+    del = cau_w(ang_k(1),ang_k(2),ang_k(3))*gyro(t,:)';
+    angle(t,:) = (ang_k + del.'*dt);
+end
+    
+figure;plot(angle - pos(:,4:6));
+legend 1 2
+
+%% 奇怪的积分
+
+
+
 
 %% 中值积分
 gw = [0, 0, -9.81]';
@@ -102,8 +154,7 @@ for k = 2:N
           w(3)   w(2)   -w(1)     0  ];
     Fc = 0.5*Ow;
     F = eye(4) + Fc*dt;%%或者在这里改变积分的方法(对于矩阵的积分方法)
-    quat1 = F* quat;
-    
+    quat1 = F * quat;
     
     %%
     R_S_n = quat2dcm(quat');
@@ -147,9 +198,8 @@ end
 % end
 
 
-figure;plot(time , PwbSav-pos(:,1:3));title('中值积分的误差对比')
-figure;plot(time, real(oula_new));hold on;
-plot(time , pos(:,4:6))
+% figure;plot(time , PwbSav-pos(:,1:3));title('中值积分的误差对比')
+% figure;plot(time, real(oula_new)-pos(:,4:6));hold on;
 
 
 
@@ -207,5 +257,11 @@ R = [1, 0, -sp;
 
 end
 
+function W = cau_w(fai,sita,psi)
+
+W = [1,sin(fai)*tan(sita) , cos(fai)*tan(sita);
+    0, cos(fai) , -sin(fai);
+    0, sin(fai)/cos(sita) , cos(fai)/cos(sita)];
+end
 
 
